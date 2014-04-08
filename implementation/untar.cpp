@@ -6,6 +6,9 @@
 #include <exception>
 #include <vector>
 #include <boost/algorithm/string.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+
 
 // See http://stackoverflow.com/questions/2505042/how-to-parse-a-tar-file-in-c for details
 
@@ -68,7 +71,7 @@ namespace detail{
 }
 
 struct tar_archive{
-	std::ifstream& fs_;
+	std::istream& fs_;
 	header_t h_;
 	bool fdata_read_ = false;
 	std::vector<char> vec_;
@@ -81,7 +84,7 @@ struct tar_archive{
 			throw std::runtime_error("Only the ustar format is supported, unsupported format");
 		}
 	}
-	tar_archive(std::ifstream& fs) :fs_{ fs}{
+	tar_archive(std::istream& fs) :fs_{ fs}{
 		
 		read_header();
 	}
@@ -148,8 +151,15 @@ void extract_all(const boost::filesystem::path& archive_path, const boost::files
 	boost::filesystem::ifstream ifs;
 	ifs.exceptions(std::ios::failbit);
 	ifs.open( archive_path,std::ios::binary );
-	
-	tar_archive ar{ ifs };
+	boost::iostreams::filtering_istream fifs;
+	auto ext = boost::algorithm::to_lower_copy(archive_path.extension().string());
+
+
+	if (ext == ".gz" || ext == ".tgz"){
+		fifs.push(boost::iostreams::gzip_decompressor{});
+	}
+	fifs.push(ifs);
+	tar_archive ar{ fifs };
 	do{
 		ar.extract(p);
 	} while (ar.next());
@@ -157,6 +167,7 @@ void extract_all(const boost::filesystem::path& archive_path, const boost::files
 
 int main(int argc, char** argv){
 
+	try{
 	auto cp = boost::filesystem::current_path();
 
 	if (argc < 2){
@@ -164,5 +175,9 @@ int main(int argc, char** argv){
 		return 0;
 	}
 	extract_all(argv[1], cp);
+	}
+	catch (std::exception& e){
+		std::cerr << "Error " << e.what();
+	}
 
 }
